@@ -63,7 +63,7 @@ FIND <entity> [WITH <property_filter>] [AS <alias>]
    ✅ `FIND User AS u (THAT IS Person AS p)?`
    ❌ `FIND User AS u THAT IS? Person AS p`
 
-7. **Using Aggregates For Discovery**: Alias COUNT and use ORDER BY
+7. **Using Aggregates For Discovery**: Alias COUNT and use ORDER BY. DON'T USE THE WORD count AS an Alias. Use cnt.
    ✅ `FIND * AS ent RETURN ent._class, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50`
    ❌ `FIND * AS ent RETURN ent._class, COUNT(ent) LIMIT 50`
 
