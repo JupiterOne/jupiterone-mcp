@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+      "jupiterone": {
+        "command": "/path-to-jupiterone-mcp-directory/.venv/bin/python",
+        "args": ["/path-to-jupiterone-mcp-directory/mcp_server.py"],
+        "env": {
+          "JUPITERONE_API_KEY": "your-jupiterone-api-key",
+          "JUPITERONE_ACCOUNT_ID": "your-jupiterone-account-id",
+          "JUPITERONE_REGION": "us"
+        }
+      }
+    }
+  }
