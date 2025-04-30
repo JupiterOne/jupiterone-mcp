@@ -8,7 +8,7 @@ description: J1QL querying rules
 globs: 
 alwaysApply: true
 ---
-
+ 
 ### JupiterOne Query Language (J1QL) Guide for AI Agents
 
 > **CRITICAL:** Follow this guide strictly. Any deviation may result in query failure. Do not use operators not documented here.
@@ -63,7 +63,7 @@ FIND <entity> [WITH <property_filter>] [AS <alias>]
    ✅ `FIND User AS u (THAT IS Person AS p)?`
    ❌ `FIND User AS u THAT IS? Person AS p`
 
-7. **Using Aggregates For Discovery**: Alias COUNT and use ORDER BY. DON'T USE THE WORD count AS an Alias. Use cnt.
+7. **Using Aggregates For Discovery**: Alias COUNT and use ORDER BY
    ✅ `FIND * AS ent RETURN ent._class, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50`
    ❌ `FIND * AS ent RETURN ent._class, COUNT(ent) LIMIT 50`
 
@@ -147,6 +147,13 @@ FIND User WITH username=/john/ LIMIT 10  # Case-insensitive match
 
 #### Traversing Relationships (THAT)
 
+## Important: Don't assume relationship VERBS, either do discovery to determine the correct relationship or use the wild card relationship "THAT RELATES TO"
+
+**Any relationship traversal (i.e. wildcard)**:
+```j1ql
+FIND User THAT RELATES TO Application LIMIT 10
+```
+
 **Basic traversal**:
 ```j1ql
 FIND User THAT HAS Device LIMIT 10
@@ -160,11 +167,6 @@ FIND User THAT HAS Device THAT INSTALLED Application LIMIT 10
 **Multi-step traversal with filtering**:
 ```j1ql
 FIND User WITH active = true THAT HAS Device THAT INSTALLED Application WITH vendor = 'Microsoft' LIMIT 10
-```
-
-**Any relationship traversal**:
-```j1ql
-FIND User THAT RELATES TO Application LIMIT 10
 ```
 
 **Multiple relationship types**:
@@ -289,24 +291,35 @@ LIMIT 10
 
 #### Discovery Techniques (ALWAYS USE THESE FIRST)
 
+FIRST:
 **Identify entity classes and counts**:
 ```j1ql
 FIND * AS ent RETURN ent._class, COUNT(ent)
 ```
 
-**Discover properties on an entity** (ALWAYS USE LIMIT 100):
+SECOND:
+**Discover properties on an entity**:
 ```j1ql
 FIND User AS ent RETURN ent.* LIMIT 100
 ```
 
-**Identify properties on related entities**:
+THIRD:
+**Find how entities are related**:
 ```j1ql
-FIND User THAT RELATES TO Device AS ent RETURN ent.* LIMIT 100
+FIND User THAT RELATES TO AS rel * AS ent RETURN rel._class, ent._type, COUNT(ent)
 ```
 
+FORTH:
 **Discover property values**:
 ```j1ql
 FIND User AS ent RETURN ent.status, COUNT(ent)
+```
+
+ADDITIONAL:
+
+**Identify properties on related entities**:
+```j1ql
+FIND User THAT RELATES TO Device AS ent RETURN ent.* LIMIT 100
 ```
 
 **Find related entity types**:
@@ -347,6 +360,13 @@ Before running any J1QL query, verify:
    - ❌ Referencing undefined aliases
    - ❌ Using improper optional traversal syntax
 
+3. **No Results**
+    - ❌ No results may be expected, validate with the context of the query
+    - ❌ Use wildcard relationship (i.e. THAT RELATES TO)
+    - ❌ Confirm the property being filtered exists
+    - ❌ Confirm the value being used for the filtered property exists
+    - ❌ Never assume _type, _class, relationship verbs or properties, only use what has been found in discovery
+
 #### Query Development Process
 
 1. **Start with discovery queries** to understand the data model:
@@ -359,14 +379,20 @@ Before running any J1QL query, verify:
    FIND User AS ent RETURN ent.* LIMIT 100
    ```
 
-3. **Incrementally build complexity**:
+3. **Determine what and how the entity relates to other entities**:
+   ```j1ql
+   FIND User THAT RELATES TO AS rel * AS ent RETURN rel._class, ent._type, COUNT(ent)
+   ```
+
+4. **Incrementally build complexity**:
    - Start with basic entity queries
    - Add property filters
    - Add relationship traversals
    - Add specific return fields
    - Add aggregations if needed
    - Rinse and repeat until you have a query doing what you need
+   - IMPORTANT: Don't assume _type, _class, relationship verbs or properties, only use values found during discovery!
 
-4. **Troubleshoot by simplifying** - if a complex query fails, break it into smaller parts
+5. **Troubleshoot by simplifying** - if a complex query fails, break it into smaller parts
 
 By following these strict guide `plines, AI agents can effectively create valid J1QL queries that provide accurate security insights across the organization's digital environment.
