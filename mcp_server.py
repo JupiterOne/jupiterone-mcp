@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 import os
 import time
 import json
@@ -6,6 +6,8 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 from mcp.server.fastmcp import FastMCP
 import re
+from dataclasses import dataclass
+from datetime import datetime
 
 # Initialize FastMCP server
 mcp = FastMCP("jupiterone")
@@ -15,6 +17,46 @@ JUPITERONE_API_KEY = os.getenv("JUPITERONE_API_KEY")
 JUPITERONE_ACCOUNT_ID = os.getenv("JUPITERONE_ACCOUNT_ID")
 JUPITERONE_REGION = os.getenv("JUPITERONE_REGION", "us")
 JUPITERONE_API_URL = f"https://graphql.{JUPITERONE_REGION}.jupiterone.io"
+
+@dataclass
+class PollingIntervalCronExpression:
+    hour: Optional[int]
+    dayOfWeek: Optional[int]
+
+@dataclass
+class MostRecentJob:
+    hasSkippedSteps: bool
+    status: str
+    createDate: datetime
+
+@dataclass
+class IntegrationInstance:
+    id: str
+    name: str
+    accountId: str
+    sourceIntegrationInstanceId: Optional[str]
+    pollingInterval: Optional[int]
+    pollingIntervalCronExpression: Optional[PollingIntervalCronExpression]
+    integrationDefinitionId: str
+    description: Optional[str]
+    config: Dict[str, Any]
+    instanceRelationship: Optional[str]
+    mostRecentJob: Optional[MostRecentJob]
+    resourceGroupId: Optional[str]
+    createdOn: datetime
+    createdBy: str
+    updatedOn: datetime
+    updatedBy: str
+
+@dataclass
+class PageInfo:
+    endCursor: Optional[str]
+    hasNextPage: bool
+
+@dataclass
+class IntegrationInstancesResponse:
+    instances: List[IntegrationInstance]
+    pageInfo: PageInfo
 
 # Create a session with retry logic
 def create_session():
@@ -250,6 +292,202 @@ async def run_j1_query(query: str) -> Any:
     """
     result = make_jupiterone_query(query)
     return result
+
+async def _graphql_request(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Make a GraphQL request to JupiterOne API.
+    
+    Args:
+        query: The GraphQL query string
+        variables: Variables for the GraphQL query
+        
+    Returns:
+        Dict containing the response data
+    """
+    session = create_session()
+    headers = {
+        "Authorization": f"Bearer {JUPITERONE_API_KEY}",
+        "JupiterOne-Account": JUPITERONE_ACCOUNT_ID,
+        "Content-Type": "application/json",
+    }
+    
+    payload = {
+        "query": query,
+        "variables": variables
+    }
+    
+    response = session.post(
+        JUPITERONE_API_URL,
+        headers=headers,
+        json=payload,
+        timeout=60
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"GraphQL request failed with status {response.status_code}: {response.text}")
+    
+    result = response.json()
+    if "errors" in result:
+        raise Exception(f"GraphQL errors: {result['errors']}")
+        
+    return result["data"]
+
+async def new_relic_graphql_request(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Make a GraphQL request to New Relic's API.
+    
+    Args:
+        query: The GraphQL query string
+        variables: Variables for the GraphQL query
+        
+    Returns:
+        Dict containing the response data
+    """
+    session = create_session()
+    NEW_RELIC_API_KEY = os.environ.get("NEW_RELIC_API_KEY")
+    if not NEW_RELIC_API_KEY:
+        raise Exception("NEW_RELIC_API_KEY environment variable is not set.")
+    
+    headers = {
+        "API-Key": NEW_RELIC_API_KEY,
+        "Content-Type": "application/json",
+    }
+    
+    payload = {
+        "query": query,
+        "variables": variables or {}
+    }
+    
+    response = session.post(
+        "https://api.newrelic.com/graphql",
+        headers=headers,
+        json=payload,
+        timeout=60
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"New Relic GraphQL request failed with status {response.status_code}: {response.text}")
+    
+    result = response.json()
+    if "errors" in result:
+        raise Exception(f"New Relic GraphQL errors: {result['errors']}")
+        
+    return result["data"]
+
+@mcp.tool()
+async def get_integration_instances(
+    definition_id: Union[str, None] = None,
+    cursor: Union[str, None] = None,
+    limit: Union[int, None] = None,
+    filter: Union[Dict[str, Any], None] = None
+) -> IntegrationInstancesResponse:
+    """
+    Retrieve integration instances using GraphQL query.
+    
+    Args:
+        definition_id: Optional filter by integration definition ID
+        cursor: Optional pagination cursor
+        limit: Optional limit on number of results
+        filter: Optional additional filters
+        
+    Returns:
+        IntegrationInstancesResponse containing instances and pagination info
+    """
+    query = """
+    query GetInstances($definitionId: String, $cursor: String, $limit: Int, $filter: JSON) {
+        integrationInstancesV2(
+            definitionId: $definitionId
+            cursor: $cursor
+            limit: $limit
+            filter: $filter
+        ) {
+            instances {
+                id
+                name
+                accountId
+                sourceIntegrationInstanceId
+                pollingInterval
+                pollingIntervalCronExpression {
+                    hour
+                    dayOfWeek
+                }
+                integrationDefinitionId
+                description
+                config
+                instanceRelationship
+                mostRecentJob {
+                    hasSkippedSteps
+                    status
+                    createDate
+                }
+                resourceGroupId
+                createdOn
+                createdBy
+                updatedOn
+                updatedBy
+            }
+            pageInfo {
+                endCursor
+                hasNextPage
+            }
+        }
+    }
+    """
+    
+    variables = {
+        "definitionId": definition_id,
+        "cursor": cursor,
+        "limit": limit,
+        "filter": filter or {}
+    }
+    
+    response = await _graphql_request(query, variables)
+    return IntegrationInstancesResponse(**response["integrationInstancesV2"])
+
+@mcp.tool()
+async def query_new_relic_logs(nrql: str = '', limit: int = None) -> Any:
+    """
+    Query logs from New Relic using NRQL via the GraphQL API.
+
+    Args:
+        nrql: The NRQL query string for logs (e.g., 'SELECT * FROM Log ...').
+        limit: Optional limit for number of results.
+
+    Returns:
+        The logs data from New Relic (results field only).
+        Uses the NEW_RELIC_ACCOUNT_ID environment variable for the account.
+    """
+    env_account_id = os.environ.get("NEW_RELIC_ACCOUNT_ID")
+    if not env_account_id:
+        return {"error": "NEW_RELIC_ACCOUNT_ID environment variable is not set."}
+    try:
+        account_id = int(env_account_id)
+    except ValueError:
+        return {"error": "NEW_RELIC_ACCOUNT_ID environment variable is not a valid integer."}
+    graphql_query = """
+    query($accountId: Int!, $query: Nrql!) {
+      actor {
+        account(id: $accountId) {
+          nrql(query: $query) {
+            results
+          }
+        }
+      }
+    }
+    """
+    # Optionally append LIMIT to NRQL if provided and not already present
+    if limit is not None and 'LIMIT' not in nrql.upper():
+        nrql = f"{nrql.strip()} LIMIT {limit}"
+    variables = {
+        "accountId": account_id,
+        "query": nrql
+    }
+    try:
+        result = await new_relic_graphql_request(graphql_query, variables)
+        # Extract and return only the log results
+        return result["actor"]["account"]["nrql"]["results"]
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')
