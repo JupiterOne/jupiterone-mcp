@@ -251,5 +251,178 @@ async def run_j1_query(query: str) -> Any:
     result = make_jupiterone_query(query)
     return result
 
+@mcp.prompt()
+def j1ql_guide() -> str:
+    """JupiterOne Query Language (J1QL) Guide for creating valid queries.
+    
+    This prompt provides comprehensive guidelines for constructing J1QL queries.
+    """
+    return """
+### JupiterOne Query Language (J1QL) Guide
+
+> **CRITICAL:** Follow this guide strictly. Any deviation may result in query failure. Do not use operators not documented here.
+
+#### Core Concepts
+
+**Entity and Relationship Structure**
+- **Entities**: Assets in your environment with specific classes and types
+  - **Entity Class**: Always `TitleCase` (e.g., `User`, `Host`, `Application`)
+  - **Entity Type**: Always `snake_case` (e.g., `aws_iam_user`, `github_user`)
+- **Relationships**: Connections between entities
+  - **Relationship Class**: Always `ALLCAPS` (e.g., `HAS`, `USES`, `PROTECTS`)
+- **Default Returns**: Queries return the first entity after FIND unless explicitly modified with RETURN
+
+#### MANDATORY Query Structure
+
+```
+FIND <entity> [WITH <property_filter>] [AS <alias>]
+  [THAT <relationship> [<direction>] <entity> [WITH <property_filter>] [AS <alias>]]
+  [WHERE <condition>]
+  [RETURN <field_selection>]
+  [ORDER BY <field>]
+  [SKIP <number>]
+  [LIMIT <number>]
+```
+
+#### ⚠️ CRITICAL SYNTAX RULES ⚠️ ALL QUERIES MUST ADHERE TO THESE RULES
+
+1. **Alias Placement**: Aliases MUST follow the WITH statement when filtering
+   ✅ `FIND Device WITH name~='TEST' AS dev`
+   ❌ `FIND Device AS dev WITH name~='TEST'`
+
+2. **String Values**: ALWAYS use single quotes for strings, NEVER double quotes
+   ✅ `name ~= 'john'`
+   ❌ `name ~= "john"`
+
+3. **WITH vs WHERE**: Use WITH for entity properties, WHERE only for relationship properties or cross-entity comparisons
+   ✅ `FIND User WITH active = true`
+   ✅ `FIND User AS u THAT HAS Device AS d WHERE u.active = true AND d.platform = 'darwin'`
+   ❌ `FIND User WHERE active = true`
+
+4. **LIMIT Usage**: ALWAYS include LIMIT (5-100) or use COUNT for discovery
+   ✅ `FIND User LIMIT 50`
+   ✅ `FIND User AS u RETURN u._type, count(u)`
+   ❌ `FIND User` (no limit specified)
+
+5. **Relationship Direction**: Direction arrows MUST follow the relationship verb
+   ✅ `FIND User THAT HAS >> Device`
+   ❌ `FIND User THAT >> HAS Device`
+
+6. **Optional Traversals**: Use parentheses and question mark
+   ✅ `FIND User AS u (THAT IS Person AS p)?`
+   ❌ `FIND User AS u THAT IS? Person AS p`
+
+7. **Using Aggregates For Discovery**: Alias COUNT and use ORDER BY
+   ✅ `FIND * AS ent RETURN ent._class, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50`
+   ❌ `FIND * AS ent RETURN ent._class, COUNT(ent) LIMIT 50`
+
+#### Entity Selection
+
+**Finding by class or type**:
+```j1ql
+FIND User LIMIT 10                 # Find entities with _class = 'User'
+FIND aws_iam_user LIMIT 10         # Find entities with _type = 'aws_iam_user'
+FIND * WITH _type='aws_instance' LIMIT 10  # Filter any entity by type
+```
+
+**Finding multiple entity types**:
+```j1ql
+FIND (User | Host) LIMIT 10        # Find entities with _class = 'User' OR _class = 'Host'
+```
+
+#### Property Filtering (WITH)
+
+**Basic property filtering**:
+```j1ql
+FIND User WITH active = true LIMIT 10
+FIND DataStore WITH encrypted = false LIMIT 10
+```
+
+**WITH filtering with alias** (CORRECT ORDER):
+```j1ql
+FIND User WITH active = true AS u LIMIT 10
+FIND DataStore WITH encrypted = false AS ds LIMIT 10
+```
+
+**WITH filtering with alias AND Advanced filtering** (CORRECT ORDER):
+```j1ql
+FIND User WITH accountCount > 0 AS u RETURN u.displayName
+FIND DataStore WITH name~='ROOT' OR name=/iam/i AS ds RETURN ds.name, ds.encrypted LIMIT 10
+```
+
+#### String Comparisons
+
+J1QL comparison operators:
+- `=` : equals (exact match)
+- `!=` : not equals
+- `~=` : contains
+- `^=` : starts with
+- `$=` : ends with
+- `!~=` : does not contain
+- `!^=` : does not start with
+- `!$=` : does not end with
+
+```j1ql
+FIND User WITH username ~= 'john' LIMIT 10
+FIND Host WITH name ^= 'web' LIMIT 10
+```
+
+#### Case-Insensitive Matching (Regex)
+
+```j1ql
+FIND User WITH username=/john/ LIMIT 10  # Case-insensitive match
+```
+
+#### Traversing Relationships (THAT)
+
+**Important: Don't assume relationship VERBS, either do discovery to determine the correct relationship or use the wild card relationship "THAT RELATES TO"**
+
+**Any relationship traversal (i.e. wildcard)**:
+```j1ql
+FIND User THAT RELATES TO Application LIMIT 10
+```
+
+**Basic traversal**:
+```j1ql
+FIND User THAT HAS Device LIMIT 10
+```
+
+#### Discovery Techniques (ALWAYS USE THESE FIRST)
+
+FIRST:
+**Identify entity classes and counts**:
+```j1ql
+FIND * AS ent RETURN ent._class, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50
+```
+
+SECOND:
+**Discover properties on an entity**:
+```j1ql
+FIND User AS ent RETURN ent.* LIMIT 100
+```
+
+THIRD:
+**Find how entities are related**:
+```j1ql
+FIND User THAT RELATES TO AS rel * AS ent RETURN rel._class, ent._type, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50
+```
+
+#### Example Queries
+
+```j1ql
+# Find all active users
+FIND User WITH active=true LIMIT 50
+
+# Find devices with a specific operating system
+FIND Device WITH platform='darwin' LIMIT 50
+
+# Find users that have devices
+FIND User THAT HAS Device LIMIT 50
+
+# Get counts of entity types
+FIND * AS ent RETURN ent._type, COUNT(ent) AS cnt ORDER BY cnt DESC LIMIT 50
+```
+"""
+
 if __name__ == "__main__":
     mcp.run(transport='stdio')

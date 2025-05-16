@@ -1,6 +1,6 @@
 # JupiterOne MCP Server
 
-A Model Code Predictor (MCP) server for Cursor that integrates with JupiterOne.
+A Model Context Protocol (MCP) server for LLMs that integrates with JupiterOne.
 
 ## Setup Instructions
 
@@ -30,7 +30,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure the MCP Server
+### 4. Configure the MCP Server (Specifically for Cursor - instructions for other tools will vary)
 
 Update the `.cursor/mcp.json` file with your JupiterOne credentials:
 
